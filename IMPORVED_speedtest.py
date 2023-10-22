@@ -1,45 +1,59 @@
-import threading
-import tkinter as tk
-from tkinter import ttk
-import speedtest
+import sys
+import subprocess
+from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QPushButton
 
-class InternetSpeedTester(tk.Tk):
+class InternetSpeedTester(QWidget):
     def __init__(self):
         super().__init__()
-        self.title("Internet Speed Tester")
-        self.geometry("400x200")
-        self.speedtester = speedtest.Speedtest()
+        self.initUI()
 
-        self.download_label = ttk.Label(self, text="Download Speed: ")
-        self.download_label.pack(pady=10)
+    def initUI(self):
+        self.setWindowTitle('Internet Speed Tester')
+        self.setGeometry(200, 200, 400, 200)
 
-        self.upload_label = ttk.Label(self, text="Upload Speed: ")
-        self.upload_label.pack(pady=10)
+        self.download_label = QLabel('Download Speed: ')
+        self.upload_label = QLabel('Upload Speed: ')
 
-        self.start_button = ttk.Button(self, text="Start Test", command=self.start_test)
-        self.start_button.pack(pady=20)
+        self.layout = QVBoxLayout()
+        self.layout.addWidget(self.download_label)
+        self.layout.addWidget(self.upload_label)
 
-    def start_test(self):
-        self.start_button.config(state="disabled")
-        self.download_label.config(text="Download Speed: Calculating...")
-        self.upload_label.config(text="Upload Speed: Calculating...")
+        self.start_button = QPushButton('Start Test', self)
+        self.start_button.clicked.connect(self.startTest)
+        self.layout.addWidget(self.start_button)
 
-        # Start the speed test in a separate thread
-        thread = threading.Thread(target=self.run_speed_test)
-        thread.start()
+        self.setLayout(self.layout)
 
-    def run_speed_test(self):
-        download_speed = self.speedtester.download() / 1_000_000  # Convert to Mbps
-        upload_speed = self.speedtester.upload() / 1_000_000  # Convert to Mbps
+    def startTest(self):
+        self.start_button.setEnabled(False)
+        self.download_label.setText('Download Speed: Calculating...')
+        self.upload_label.setText('Upload Speed: Calculating...')
+        subprocess.Popen(["speedtest-cli", "--simple"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).communicate(input=None)
+        self.updateSpeeds()
 
-        # Update UI with results
-        self.download_label.config(text=f"Download Speed: {download_speed:.2f} Mbps")
-        self.upload_label.config(text=f"Upload Speed: {upload_speed:.2f} Mbps")
+    def updateSpeeds(self):
+        try:
+            result = subprocess.run(["speedtest-cli", "--simple"], capture_output=True, text=True)
+            output = result.stdout.splitlines()
+
+            if len(output) >= 2 and output[0].startswith("Download") and output[1].startswith("Upload"):
+                download_speed = float(output[0].split()[1]) / 1_000_000  # Convert to Mbps
+                upload_speed = float(output[1].split()[1]) / 1_000_000  # Convert to Mbps
+
+                self.download_label.setText(f'Download Speed: {download_speed:.2f} Mbps')
+                self.upload_label.setText(f'Upload Speed: {upload_speed:.2f} Mbps')
+            else:
+                raise Exception("Unexpected output format", output)
+
+        except Exception as e:
+            print(f"Error: {e}")
+            self.download_label.setText('Download Speed: Error')
+            self.upload_label.setText('Upload Speed: Error')
         
-        # Enable the start button after the test is completed
-        self.start_button.config(state="normal")
+        self.start_button.setEnabled(True)
 
-
-if __name__ == "__main__":
-    app = InternetSpeedTester()
-    app.mainloop()
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    window = InternetSpeedTester()
+    window.show()
+    sys.exit(app.exec_())
